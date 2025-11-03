@@ -1,0 +1,225 @@
+---
+title: "Car_Price_Investigate"
+author: "Shiheng Xu"
+date: "2025-11-03"
+output: html_document
+---
+
+```{r}
+# Load the dataset from the correct location
+car_data <- read.csv("data/archive-2/train.csv", stringsAsFactors = FALSE)
+
+# Confirm it loaded successfully
+cat("✓ Dataset loaded successfully!\n")
+cat("Rows:", nrow(car_data), "\n")
+cat("Columns:", ncol(car_data), "\n")
+```
+
+```{r}
+# View first 6 rows
+head(car_data)
+
+# Check column names
+names(car_data)
+
+# Get structure
+str(car_data)
+```
+
+```{r}
+# Get a statistical summary
+summary(car_data)
+```
+
+
+```{r}
+# 1. Check Doors column (looks like Excel date conversion issue!)
+table(car_data$Doors)
+
+# 2. Check Levy - what does "-" mean?
+table(car_data$Levy)
+
+# 3. Look at Mileage format
+head(car_data$Mileage, 20)
+
+# 4. Check Engine.volume
+head(car_data$Engine.volume, 20)
+table(car_data$Engine.volume)
+```
+
+
+
+```{r}
+# Count missing values (including "-" as missing)
+cat("Missing Values Summary:\n")
+colSums(is.na(car_data))
+
+# Check for "-" in Levy
+sum(car_data$Levy == "-")
+
+# Check data completeness
+cat("\nRows with complete data:", sum(complete.cases(car_data)), "\n")
+cat("Rows with ANY missing:", sum(!complete.cases(car_data)), "\n")
+```
+
+```{r}
+# Price statistics
+cat("Price Statistics:\n")
+summary(car_data$Price)
+
+# Check for zero or negative prices
+sum(car_data$Price <= 0)
+
+# Visualize price distribution
+hist(car_data$Price, 
+     breaks = 50, 
+     main = "Distribution of Car Prices",
+     xlab = "Price",
+     col = "lightblue",
+     xlim = c(0, 100000))  # Focus on reasonable range
+
+# Check if there are extreme outliers
+cat("\nTop 10 most expensive cars:\n")
+head(sort(car_data$Price, decreasing = TRUE), 10)
+
+cat("\nBottom 10 cheapest cars:\n")
+head(sort(car_data$Price), 10)
+```
+
+```{r}
+# Create reasonable_prices variable first
+reasonable_prices <- car_data$Price[car_data$Price < 200000]
+
+# 1. Histogram of reasonable prices
+hist(reasonable_prices, 
+     breaks = 50,
+     main = "Prices < $200,000",
+     xlab = "Price",
+     col = "lightblue")
+
+# 2. Boxplot to see outliers
+boxplot(car_data$Price,
+        main = "Boxplot of All Prices",
+        ylab = "Price",
+        col = "lightgreen")
+
+# 3. Log-transformed prices
+hist(log(car_data$Price + 1),
+     breaks = 50,
+     main = "Log-Transformed Prices",
+     xlab = "log(Price)",
+     col = "coral")
+```
+
+```{r}
+# Extreme value counts
+cat("=== EXTREME VALUES ===\n")
+cat("Cars > $200,000:", sum(car_data$Price > 200000), "\n")
+cat("Cars > $100,000:", sum(car_data$Price > 100000), "\n")
+cat("Cars < $100:", sum(car_data$Price < 100), "\n")
+cat("Cars < $500:", sum(car_data$Price < 500), "\n\n")
+
+# Most expensive car details
+cat("=== MOST EXPENSIVE CAR ===\n")
+print(car_data[which.max(car_data$Price), ])
+
+cat("\n=== CHEAPEST 5 CARS ===\n")
+print(head(car_data[order(car_data$Price), ], 5))
+```
+
+```{r}
+# Detailed price breakdown
+price_summary <- data.frame(
+  Range = c("$1-1000", "$1k-5k", "$5k-10k", "$10k-20k", "$20k-50k", "$50k-100k", ">$100k"),
+  Count = c(
+    sum(car_data$Price < 1000),
+    sum(car_data$Price >= 1000 & car_data$Price < 5000),
+    sum(car_data$Price >= 5000 & car_data$Price < 10000),
+    sum(car_data$Price >= 10000 & car_data$Price < 20000),
+    sum(car_data$Price >= 20000 & car_data$Price < 50000),
+    sum(car_data$Price >= 50000 & car_data$Price < 100000),
+    sum(car_data$Price >= 100000)
+  )
+)
+
+price_summary$Percentage <- round(price_summary$Count / nrow(car_data) * 100, 2)
+print(price_summary)
+```
+
+```{r}
+# Select only numeric columns for correlation
+numeric_cols <- c("Price", "Prod..year", "Cylinders", "Airbags")
+
+# Calculate correlations with Price
+cor_with_price <- cor(car_data[, numeric_cols], use = "complete.obs")
+
+# Show correlations with Price
+cat("Correlations with Price:\n")
+print(round(cor_with_price[, "Price"], 3))
+
+# Visualize correlations
+library(corrplot)
+corrplot(cor_with_price, 
+         method = "color", 
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         title = "Correlation Matrix")
+```
+
+```{r}
+# Price by Manufacturer (top 10)
+cat("\nAverage Price by Manufacturer (Top 10):\n")
+manufacturer_price <- aggregate(Price ~ Manufacturer, data = car_data, FUN = mean)
+manufacturer_price <- manufacturer_price[order(manufacturer_price$Price, decreasing = TRUE), ]
+print(head(manufacturer_price, 10))
+
+# Price by Fuel Type
+cat("\nAverage Price by Fuel Type:\n")
+fuel_price <- aggregate(Price ~ Fuel.type, data = car_data, FUN = mean)
+print(fuel_price[order(fuel_price$Price, decreasing = TRUE), ])
+
+# Price by Category
+cat("\nAverage Price by Category:\n")
+category_price <- aggregate(Price ~ Category, data = car_data, FUN = mean)
+print(category_price[order(category_price$Price, decreasing = TRUE), ])
+```
+
+```{r}
+# Remove the extreme outlier ($26M car)
+car_data_clean <- car_data[car_data$Price < 500000, ]
+
+cat("Original data:", nrow(car_data), "rows\n")
+cat("After removing outlier:", nrow(car_data_clean), "rows\n")
+cat("Removed:", nrow(car_data) - nrow(car_data_clean), "rows\n\n")
+
+# Recalculate correlations
+numeric_cols <- c("Price", "Prod..year", "Cylinders", "Airbags")
+cor_clean <- cor(car_data_clean[, numeric_cols], use = "complete.obs")
+
+cat("NEW Correlations with Price (after removing outlier):\n")
+print(round(cor_clean[, "Price"], 3))
+
+# Visualize new correlation
+corrplot(cor_clean, 
+         method = "color", 
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         title = "Correlation Matrix (Cleaned Data)")
+```
+
+```{r}
+# New price statistics
+cat("\nCleaned Price Statistics:\n")
+summary(car_data_clean$Price)
+
+# New histogram
+hist(car_data_clean$Price,
+     breaks = 50,
+     main = "Price Distribution (After Removing Outlier)",
+     xlab = "Price",
+     col = "lightgreen")
+```
