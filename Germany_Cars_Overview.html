@@ -380,15 +380,15 @@ display: none;
 glimpse(cars)</code></pre>
 <pre><code>## Rows: 46,405
 ## Columns: 9
-## $ mileage   &lt;dbl&gt; 235000, 92800, 149300, 96200, 156000, 147000, 91894, 127500,…
-## $ make      &lt;chr&gt; &quot;BMW&quot;, &quot;Volkswagen&quot;, &quot;SEAT&quot;, &quot;Renault&quot;, &quot;Peugeot&quot;, &quot;Toyota&quot;,…
-## $ model     &lt;chr&gt; &quot;316&quot;, &quot;Golf&quot;, &quot;Exeo&quot;, &quot;Megane&quot;, &quot;308&quot;, &quot;Auris&quot;, &quot;Scenic&quot;, &quot;…
-## $ fuel      &lt;chr&gt; &quot;Diesel&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;E…
-## $ gear      &lt;chr&gt; &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Automatic…
-## $ offerType &lt;chr&gt; &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Use…
-## $ price     &lt;dbl&gt; 6800, 6877, 6900, 6950, 6950, 6950, 6970, 6972, 6980, 6990, …
-## $ hp        &lt;dbl&gt; 116, 122, 160, 110, 156, 99, 131, 116, 150, 86, 101, 105, 20…
-## $ year      &lt;dbl&gt; 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, …</code></pre>
+## $ mileage   &lt;dbl&gt; 235000, 92800, 149300, 96200, 156000, 147000, 91894, 127500, 115000, 104, 59580, 84000, 427000, 10…
+## $ make      &lt;chr&gt; &quot;BMW&quot;, &quot;Volkswagen&quot;, &quot;SEAT&quot;, &quot;Renault&quot;, &quot;Peugeot&quot;, &quot;Toyota&quot;, &quot;Renault&quot;, &quot;Opel&quot;, &quot;Mazda&quot;, &quot;Ford&quot;, &quot;…
+## $ model     &lt;chr&gt; &quot;316&quot;, &quot;Golf&quot;, &quot;Exeo&quot;, &quot;Megane&quot;, &quot;308&quot;, &quot;Auris&quot;, &quot;Scenic&quot;, &quot;Zafira&quot;, &quot;3&quot;, &quot;Transit&quot;, &quot;Meriva&quot;, &quot;Go…
+## $ fuel      &lt;chr&gt; &quot;Diesel&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Electric/Gasoline&quot;, &quot;Diesel&quot;, &quot;Gasoline…
+## $ gear      &lt;chr&gt; &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Automatic&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Automatic&quot;, &quot;M…
+## $ offerType &lt;chr&gt; &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;U…
+## $ price     &lt;dbl&gt; 6800, 6877, 6900, 6950, 6950, 6950, 6970, 6972, 6980, 6990, 6990, 6990, 6990, 6990, 6999, 6999, 69…
+## $ hp        &lt;dbl&gt; 116, 122, 160, 110, 156, 99, 131, 116, 150, 86, 101, 105, 204, 141, 120, 60, 150, 150, 135, 101, 8…
+## $ year      &lt;dbl&gt; 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 20…</code></pre>
 <pre class="r"><code>cat(&quot;Rows:&quot;, nrow(cars), &quot;Columns:&quot;, ncol(cars), &quot;\n&quot;)</code></pre>
 <pre><code>## Rows: 46405 Columns: 9</code></pre>
 </div>
@@ -396,42 +396,33 @@ glimpse(cars)</code></pre>
 <h1>Initial Inspection of the dataset</h1>
 <pre class="r"><code>head(cars)</code></pre>
 <pre><code>## # A tibble: 6 × 9
-##   mileage make       model  fuel              gear   offerType price    hp  year
-##     &lt;dbl&gt; &lt;chr&gt;      &lt;chr&gt;  &lt;chr&gt;             &lt;chr&gt;  &lt;chr&gt;     &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;
-## 1  235000 BMW        316    Diesel            Manual Used       6800   116  2011
-## 2   92800 Volkswagen Golf   Gasoline          Manual Used       6877   122  2011
-## 3  149300 SEAT       Exeo   Gasoline          Manual Used       6900   160  2011
-## 4   96200 Renault    Megane Gasoline          Manual Used       6950   110  2011
-## 5  156000 Peugeot    308    Gasoline          Manual Used       6950   156  2011
-## 6  147000 Toyota     Auris  Electric/Gasoline Autom… Used       6950    99  2011</code></pre>
+##   mileage make       model  fuel              gear      offerType price    hp  year
+##     &lt;dbl&gt; &lt;chr&gt;      &lt;chr&gt;  &lt;chr&gt;             &lt;chr&gt;     &lt;chr&gt;     &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;
+## 1  235000 BMW        316    Diesel            Manual    Used       6800   116  2011
+## 2   92800 Volkswagen Golf   Gasoline          Manual    Used       6877   122  2011
+## 3  149300 SEAT       Exeo   Gasoline          Manual    Used       6900   160  2011
+## 4   96200 Renault    Megane Gasoline          Manual    Used       6950   110  2011
+## 5  156000 Peugeot    308    Gasoline          Manual    Used       6950   156  2011
+## 6  147000 Toyota     Auris  Electric/Gasoline Automatic Used       6950    99  2011</code></pre>
 <pre class="r"><code>names(cars)</code></pre>
-<pre><code>## [1] &quot;mileage&quot;   &quot;make&quot;      &quot;model&quot;     &quot;fuel&quot;      &quot;gear&quot;      &quot;offerType&quot;
-## [7] &quot;price&quot;     &quot;hp&quot;        &quot;year&quot;</code></pre>
+<pre><code>## [1] &quot;mileage&quot;   &quot;make&quot;      &quot;model&quot;     &quot;fuel&quot;      &quot;gear&quot;      &quot;offerType&quot; &quot;price&quot;     &quot;hp&quot;        &quot;year&quot;</code></pre>
 <pre class="r"><code>summary(cars)</code></pre>
-<pre><code>##     mileage            make              model               fuel          
-##  Min.   :      0   Length:46405       Length:46405       Length:46405      
-##  1st Qu.:  19800   Class :character   Class :character   Class :character  
-##  Median :  60000   Mode  :character   Mode  :character   Mode  :character  
-##  Mean   :  71178                                                           
-##  3rd Qu.: 105000                                                           
-##  Max.   :1111111                                                           
-##                                                                            
-##      gear            offerType             price               hp     
-##  Length:46405       Length:46405       Min.   :   1100   Min.   :  1  
-##  Class :character   Class :character   1st Qu.:   7490   1st Qu.: 86  
-##  Mode  :character   Mode  :character   Median :  10999   Median :116  
-##                                        Mean   :  16572   Mean   :133  
-##                                        3rd Qu.:  19490   3rd Qu.:150  
-##                                        Max.   :1199900   Max.   :850  
-##                                                          NA&#39;s   :29   
-##       year     
-##  Min.   :2011  
-##  1st Qu.:2013  
-##  Median :2016  
-##  Mean   :2016  
-##  3rd Qu.:2019  
-##  Max.   :2021  
-## </code></pre>
+<pre><code>##     mileage            make              model               fuel               gear            offerType        
+##  Min.   :      0   Length:46405       Length:46405       Length:46405       Length:46405       Length:46405      
+##  1st Qu.:  19800   Class :character   Class :character   Class :character   Class :character   Class :character  
+##  Median :  60000   Mode  :character   Mode  :character   Mode  :character   Mode  :character   Mode  :character  
+##  Mean   :  71178                                                                                                 
+##  3rd Qu.: 105000                                                                                                 
+##  Max.   :1111111                                                                                                 
+##                                                                                                                  
+##      price               hp           year     
+##  Min.   :   1100   Min.   :  1   Min.   :2011  
+##  1st Qu.:   7490   1st Qu.: 86   1st Qu.:2013  
+##  Median :  10999   Median :116   Median :2016  
+##  Mean   :  16572   Mean   :133   Mean   :2016  
+##  3rd Qu.:  19490   3rd Qu.:150   3rd Qu.:2019  
+##  Max.   :1199900   Max.   :850   Max.   :2021  
+##                    NA&#39;s   :29</code></pre>
 </div>
 <div id="transforming-columns-to-a-standard." class="section level1">
 <h1>Transforming columns to a standard.</h1>
@@ -448,15 +439,15 @@ glimpse(cars)</code></pre>
 <pre class="r"><code>glimpse(cars)</code></pre>
 <pre><code>## Rows: 46,405
 ## Columns: 9
-## $ mileage   &lt;dbl&gt; 235000, 92800, 149300, 96200, 156000, 147000, 91894, 127500,…
-## $ make      &lt;chr&gt; &quot;BMW&quot;, &quot;Volkswagen&quot;, &quot;SEAT&quot;, &quot;Renault&quot;, &quot;Peugeot&quot;, &quot;Toyota&quot;,…
-## $ model     &lt;chr&gt; &quot;316&quot;, &quot;Golf&quot;, &quot;Exeo&quot;, &quot;Megane&quot;, &quot;308&quot;, &quot;Auris&quot;, &quot;Scenic&quot;, &quot;…
-## $ fuel      &lt;chr&gt; &quot;Diesel&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;E…
-## $ gear      &lt;chr&gt; &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Automatic…
-## $ offerType &lt;chr&gt; &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Use…
-## $ price     &lt;dbl&gt; 6800, 6877, 6900, 6950, 6950, 6950, 6970, 6972, 6980, 6990, …
-## $ hp        &lt;dbl&gt; 116, 122, 160, 110, 156, 99, 131, 116, 150, 86, 101, 105, 20…
-## $ year      &lt;int&gt; 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, …</code></pre>
+## $ mileage   &lt;dbl&gt; 235000, 92800, 149300, 96200, 156000, 147000, 91894, 127500, 115000, 104, 59580, 84000, 427000, 10…
+## $ make      &lt;chr&gt; &quot;BMW&quot;, &quot;Volkswagen&quot;, &quot;SEAT&quot;, &quot;Renault&quot;, &quot;Peugeot&quot;, &quot;Toyota&quot;, &quot;Renault&quot;, &quot;Opel&quot;, &quot;Mazda&quot;, &quot;Ford&quot;, &quot;…
+## $ model     &lt;chr&gt; &quot;316&quot;, &quot;Golf&quot;, &quot;Exeo&quot;, &quot;Megane&quot;, &quot;308&quot;, &quot;Auris&quot;, &quot;Scenic&quot;, &quot;Zafira&quot;, &quot;3&quot;, &quot;Transit&quot;, &quot;Meriva&quot;, &quot;Go…
+## $ fuel      &lt;chr&gt; &quot;Diesel&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Gasoline&quot;, &quot;Electric/Gasoline&quot;, &quot;Diesel&quot;, &quot;Gasoline…
+## $ gear      &lt;chr&gt; &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Automatic&quot;, &quot;Manual&quot;, &quot;Manual&quot;, &quot;Automatic&quot;, &quot;M…
+## $ offerType &lt;chr&gt; &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;Used&quot;, &quot;U…
+## $ price     &lt;dbl&gt; 6800, 6877, 6900, 6950, 6950, 6950, 6970, 6972, 6980, 6990, 6990, 6990, 6990, 6990, 6999, 6999, 69…
+## $ hp        &lt;dbl&gt; 116, 122, 160, 110, 156, 99, 131, 116, 150, 86, 101, 105, 204, 141, 120, 60, 150, 150, 135, 101, 8…
+## $ year      &lt;int&gt; 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 2011, 20…</code></pre>
 </div>
 <div id="data-cleaning" class="section level1">
 <h1>Data Cleaning</h1>
@@ -470,8 +461,7 @@ names(cars) &lt;- tolower(names(cars))
 cat(&quot;Columns in dataset:\n&quot;)</code></pre>
 <pre><code>## Columns in dataset:</code></pre>
 <pre class="r"><code>print(names(cars))</code></pre>
-<pre><code>## [1] &quot;mileage&quot;   &quot;make&quot;      &quot;model&quot;     &quot;fuel&quot;      &quot;gear&quot;      &quot;offertype&quot;
-## [7] &quot;price&quot;     &quot;hp&quot;        &quot;year&quot;</code></pre>
+<pre><code>## [1] &quot;mileage&quot;   &quot;make&quot;      &quot;model&quot;     &quot;fuel&quot;      &quot;gear&quot;      &quot;offertype&quot; &quot;price&quot;     &quot;hp&quot;        &quot;year&quot;</code></pre>
 <pre class="r"><code># detect which column holds the manufacturer name (make / brand)
 make_col &lt;- if (&quot;make&quot; %in% names(cars)) {
   &quot;make&quot;

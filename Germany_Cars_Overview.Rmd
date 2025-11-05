@@ -1,6 +1,8 @@
 ---
 title: "DatasetExploration"
-output: html_document
+output:
+  html_document: default
+  md_document: default
 date: "2025-11-05"
 ---
 
