@@ -1,0 +1,194 @@
+---
+title: "DatasetExploration"
+output:
+  html_document: default
+  md_document: default
+date: "2025-11-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Load necessary packages
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+```
+
+# Load the CSV file in R dataframe and check rows and Columns
+```{r}
+cars <- read_csv("autoscout24-germany-dataset.csv", col_types = cols(
+.default = col_guess()
+))
+glimpse(cars)
+cat("Rows:", nrow(cars), "Columns:", ncol(cars), "\n")
+```
+
+# Initial Inspection of the dataset
+```{r}
+head(cars)
+names(cars)
+summary(cars)
+```
+
+# Transforming columns to a standard.
+```{r}
+cars <- cars %>%
+  mutate(
+    mileage = as.numeric(mileage),
+    hp = as.numeric(hp),
+    price = as.numeric(price),
+    year = as.integer(year)
+  )
+```
+
+# Verify structure after transformation
+
+```{r}
+glimpse(cars)
+```
+
+# Data Cleaning
+```{r}
+```{r clean-and-remove-outliers}
+library(dplyr)
+library(rlang)
+
+# make all column names lowercase (so offerType -> offertype etc.)
+names(cars) <- tolower(names(cars))
+
+# show current names to confirm
+cat("Columns in dataset:\n")
+print(names(cars))
+
+# detect which column holds the manufacturer name (make / brand)
+make_col <- if ("make" %in% names(cars)) {
+  "make"
+} else if ("brand" %in% names(cars)) {
+  "brand"
+} else {
+  stop("Neither 'make' nor 'brand' found in dataset column names.")
+}
+
+# Quick check of required numeric columns
+required_numeric <- c("price", "mileage", "year")
+missing_num <- setdiff(required_numeric, names(cars))
+if (length(missing_num) > 0) stop("Missing numeric columns: ", paste(missing_num, collapse = ", "))
+
+# Coerce types (safe conversions)
+cars <- cars %>%
+  mutate(
+    price = as.numeric(price),
+    mileage = as.numeric(mileage),
+    year = as.integer(year),
+    hp = if ("hp" %in% names(cars)) as.numeric(hp) else NULL
+  )
+
+# Count rows before cleaning
+n_before <- nrow(cars)
+cat("Rows before cleaning:", n_before, "\n")
+
+# Remove rows with missing essential values
+cars <- cars %>%
+  filter(
+    !is.na(price),
+    !is.na(mileage),
+    !is.na(year),
+    !is.na(.data[[make_col]])
+  )
+
+# Remove unrealistic values (tunable thresholds)
+cars <- cars %>%
+  filter(
+    price > 100,           # remove free / invalid listings
+    price < 200000,        # reasonable upper bound (adjust if needed)
+    mileage >= 0,
+    mileage <= 500000,     # upper bound for mileage
+    year >= 1980,          # sensible lower bound
+    year <= as.integer(format(Sys.Date(), "%Y"))  # not in future
+  )
+
+n_after_basic <- nrow(cars)
+cat("Rows after removing NAs & unrealistic values:", n_after_basic, 
+    " (removed", n_before - n_after_basic, "rows )\n")
+
+# IQR outlier remover (applies to numeric vector)
+remove_outliers_logical <- function(x) {
+  if (!is.numeric(x)) return(rep(TRUE, length(x)))
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  lower <- q1 - 1.5 * iqr
+  upper <- q3 + 1.5 * iqr
+  x >= lower & x <= upper
+}
+
+# Apply outlier removal for price and mileage
+keep_price <- remove_outliers_logical(cars$price)
+keep_mileage <- remove_outliers_logical(cars$mileage)
+
+# Combine filters and apply
+cars_clean <- cars %>%
+  filter(keep_price & keep_mileage)
+
+n_after_outliers <- nrow(cars_clean)
+cat("Rows after IQR outlier removal:", n_after_outliers,
+    " (removed", n_after_basic - n_after_outliers, "additional rows )\n")
+
+# Summary of cleaned dataset
+cat("\nSummary of cleaned data:\n")
+print(summary(select(cars_clean, price, mileage, year, hp)))
+
+# Optional: show top makes remaining
+cat("\nTop makes (by count) in cleaned data:\n")
+print(cars_clean %>% count(.data[[make_col]]) %>% arrange(desc(n)) %>% head(10))
+
+# assign back to 'cars' if you want to continue using the same name
+cars <- cars_clean
+
+```
+
+
+
+
+
+```{r}
+
+# 4.1 Price Distribution
+hist(cars$price,
+     breaks = 50,
+     main = "Distribution of Car Prices (Germany)",
+     xlab = "Price (EUR)",
+     col = "lightblue")
+
+# 4.2 Relationship between Price & Mileage
+ggplot(cars, aes(x = mileage, y = price)) +
+  geom_point(alpha = 0.3, color = "darkblue") +
+  scale_x_log10() + scale_y_log10() +
+  labs(title = "Price vs Mileage (log-log scale)",
+       x = "Mileage (km)",
+       y = "Price (EUR)")
+
+# 4.3 Average Price by Manufacturer (Make)
+cars %>%
+  group_by(make) %>%
+  summarise(avg_price = mean(price, na.rm = TRUE),
+            count = n()) %>%
+  filter(count > 100) %>%
+  ggplot(aes(x = reorder(make, avg_price), y = avg_price)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Average Price by Manufacturer (only makes with >100 listings)",
+       x = "Manufacturer",
+       y = "Average Price (EUR)")
+
+# 5. Price by Registration Year
+ggplot(cars, aes(x = factor(year), y = price)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(title = "Price by Year of Manufacture",
+       x = "Year",
+       y = "Price (EUR)")
+
+```
+
