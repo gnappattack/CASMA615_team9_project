@@ -1,0 +1,302 @@
+---
+title: "Data Cleaning - Germany Cars Dataset"
+author: "Shiheng Xu"
+date: "2025-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+```
+
+# 1. Load Dataset
+
+```{r load-data}
+cars <- read.csv("data/autoscout24-germany-dataset.csv", stringsAsFactors = FALSE)
+
+cat("✓ Dataset loaded successfully!\n")
+cat("Rows:", nrow(cars), "| Columns:", ncol(cars), "\n\n")
+
+cat("Column names:\n")
+print(names(cars))
+
+cat("\nFirst 6 rows:\n")
+print(head(cars))
+```
+
+# 2. Initial Data Quality Assessment
+
+## 2.1 Check Missing Values
+
+```{r missing-values}
+cat("Missing values per column:\n")
+print(colSums(is.na(cars)))
+
+cat("\nData structure:\n")
+str(cars)
+```
+
+## 2.2 Check Price Distribution
+
+```{r price-check}
+cat("Price summary:\n")
+print(summary(cars$price))
+
+cat("\nCars with price < €1000:", sum(cars$price < 1000), "\n")
+cat("Cars with price > €100000:", sum(cars$price > 100000), "\n")
+```
+
+**Decision:** Keep all prices (including luxury cars >€100k). Will assess during regression modeling.
+
+## 2.3 Check Mileage Distribution
+
+```{r mileage-check}
+cat("Mileage summary:\n")
+print(summary(cars$mileage))
+
+cat("\nCars with mileage = 0:", sum(cars$mileage == 0), "\n")
+cat("Cars with mileage > 500,000:", sum(cars$mileage > 500000), "\n")
+```
+
+## 2.4 Check Year Distribution
+
+```{r year-check}
+cat("Year summary:\n")
+print(summary(cars$year))
+
+cat("\nYear distribution:\n")
+print(table(cars$year))
+```
+
+**Decision:** All years (2011-2021) are reasonable. No cleaning needed.
+
+## 2.5 Check HP Distribution
+
+```{r hp-check}
+cat("HP summary:\n")
+print(summary(cars$hp))
+
+cat("\nCars with hp < 50:", sum(cars$hp < 50, na.rm = TRUE), "\n")
+cat("Cars with hp > 500:", sum(cars$hp > 500, na.rm = TRUE), "\n")
+```
+
+**Decision:** Keep all HP ranges (1-850 HP represents microcars to supercars - all legitimate).
+
+## 2.6 Check Categorical Variables
+
+```{r categorical-check}
+cat("Fuel types:\n")
+print(table(cars$fuel))
+
+cat("\nGear types:\n")
+print(table(cars$gear))
+
+cat("\nOffer types:\n")
+print(table(cars$offerType))
+```
+
+# 3. Investigate Data Quality Issues
+
+## 3.1 High Mileage Investigation
+
+```{r high-mileage-investigation}
+cat("Investigating cars with mileage > 500,000 km:\n\n")
+
+high_mileage_cars <- cars[cars$mileage > 500000, 
+                           c("make", "model", "year", "mileage", "price")]
+print(high_mileage_cars)
+
+cat("\nSuspicious mileage patterns:\n")
+cat("Mileage = 1,111,111:", sum(cars$mileage == 1111111), "\n")
+cat("Mileage = 999,999:", sum(cars$mileage == 999999), "\n")
+cat("Mileage > 700,000:", sum(cars$mileage > 700000), "\n")
+cat("Mileage > 500,000:", sum(cars$mileage > 500000), "\n")
+```
+
+**Observations:**
+
+- **Obvious fake data:** Opel Karl (1,111,111 km) and BMW 320 (999,999 km) - repeating patterns
+- **Legitimate commercial vehicles:** Mercedes Sprinter, Ford Transit, Vito, Iveco Daily - high business use
+- **Potentially legitimate:** Mercedes C220, E200, Citroen C3 - could be taxis
+
+**Decision:** Remove mileage > 700,000 km (catches fake patterns while preserving legitimate commercial vehicles)
+
+## 3.2 Check for Duplicates
+
+```{r duplicate-check}
+cat("Duplicate analysis:\n\n")
+
+cat("Method 1 - duplicated() function:\n")
+cat("Number of duplicate rows:", sum(duplicated(cars)), "\n\n")
+
+cat("Method 2 - Count unique vs total:\n")
+cat("Total rows:", nrow(cars), "\n")
+cat("Unique rows:", nrow(unique(cars)), "\n")
+cat("Duplicates:", nrow(cars) - nrow(unique(cars)), "\n\n")
+
+cat("Method 3 - Detailed duplicate count:\n")
+row_counts <- cars %>%
+  group_by(across(everything())) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  arrange(desc(count))
+
+cat("Rows appearing more than once:", sum(row_counts$count > 1), "\n")
+cat("Total duplicate instances:", sum(row_counts$count[row_counts$count > 1]) - sum(row_counts$count > 1), "\n\n")
+
+cat("Sample of duplicate rows:\n")
+duplicate_rows <- cars[duplicated(cars), ]
+print(head(duplicate_rows[, c("make", "model", "year", "mileage", "price", "hp")], 10))
+```
+
+**Decision:** Remove exact duplicates. These appear to be data collection errors (same car scraped multiple times).
+
+# 4. Data Cleaning Decisions Summary
+
+**What we will REMOVE:**
+
+1. **Mileage > 700,000 km** - Obvious fake patterns (1,111,111 and 999,999)
+2. **Exact duplicates** - Same car listed multiple times (data collection errors)
+3. **Unknown fuel type** - "-/- (Fuel)" (missing fuel information)
+4. **Empty gear type** - "" (missing transmission information)
+5. **Missing HP values** - Cars without horsepower data
+
+**What we will KEEP:**
+
+- All prices (including luxury cars >€100k)
+- All HP ranges (1-850 HP, legitimate range)
+- All years (2011-2021)
+- Mileage = 0 (new/demo vehicles)
+- Rare fuel types ("Others", "Ethanol" - could be alternative fuels)
+
+# 5. Execute Data Cleaning
+
+```{r execute-cleaning}
+cat("========== EXECUTING DATA CLEANING ==========\n\n")
+
+cars_original <- cars
+
+cat("Step 1: Remove mileage > 700,000 km\n")
+cars_clean <- cars[cars$mileage <= 700000, ]
+cat("  Rows after mileage filter:", nrow(cars_clean), "\n")
+cat("  Removed:", nrow(cars_original) - nrow(cars_clean), "rows\n\n")
+
+cat("Step 2: Remove exact duplicates\n")
+cars_clean <- unique(cars_clean)
+cat("  Rows after removing duplicates:", nrow(cars_clean), "\n")
+cat("  Removed:", nrow(cars[cars$mileage <= 700000, ]) - nrow(cars_clean), "duplicates\n\n")
+
+cat("Step 3: Remove unknown fuel and gear types\n")
+cars_clean <- cars_clean[cars_clean$fuel != "-/- (Fuel)" & 
+                         cars_clean$gear != "", ]
+cat("  Rows after removing unknown categories:", nrow(cars_clean), "\n\n")
+
+cat("Step 4: Remove missing HP values\n")
+cars_clean <- cars_clean[!is.na(cars_clean$hp), ]
+cat("  Rows after removing missing HP:", nrow(cars_clean), "\n\n")
+
+cat("========== CLEANING COMPLETE ==========\n")
+```
+
+# 6. Verify Cleaned Dataset
+
+```{r verify-cleaned}
+cat("========== CLEANED DATASET VERIFICATION ==========\n\n")
+
+cat("Data Quality Checks:\n")
+cat("✓ Total rows:", nrow(cars_clean), "\n")
+cat("✓ Total columns:", ncol(cars_clean), "\n")
+cat("✓ Missing values (all columns):", sum(is.na(cars_clean)), "\n")
+cat("✓ Duplicate rows:", sum(duplicated(cars_clean)), "\n")
+cat("✓ Max mileage:", max(cars_clean$mileage), "km\n")
+cat("✓ Unknown fuel types:", sum(cars_clean$fuel == "-/- (Fuel)"), "\n")
+cat("✓ Empty gear types:", sum(cars_clean$gear == ""), "\n")
+cat("✓ Missing HP:", sum(is.na(cars_clean$hp)), "\n\n")
+
+cat("Variable Ranges:\n")
+cat("Price: €", min(cars_clean$price), "to €", max(cars_clean$price), "\n")
+cat("Mileage:", min(cars_clean$mileage), "to", max(cars_clean$mileage), "km\n")
+cat("HP:", min(cars_clean$hp), "to", max(cars_clean$hp), "\n")
+cat("Year:", min(cars_clean$year), "to", max(cars_clean$year), "\n\n")
+
+cat("Categorical Variables:\n")
+cat("Unique makes:", length(unique(cars_clean$make)), "\n")
+cat("Unique models:", length(unique(cars_clean$model)), "\n")
+cat("Fuel types:", length(unique(cars_clean$fuel)), "\n")
+cat("Gear types:", length(unique(cars_clean$gear)), "\n")
+```
+
+# 7. Final Summary
+
+```{r final-summary}
+cat("========== FINAL CLEANING SUMMARY ==========\n\n")
+
+cleaning_summary <- data.frame(
+  Step = c("Original Dataset",
+           "After Mileage Filter (>700k)",
+           "After Removing Duplicates",
+           "After Removing Unknown Fuel/Gear",
+           "After Removing Missing HP",
+           "Final Cleaned Dataset"),
+  Rows = c(nrow(cars_original),
+           nrow(cars_original[cars_original$mileage <= 700000, ]),
+           nrow(unique(cars_original[cars_original$mileage <= 700000, ])),
+           NA,  # Will be filled
+           NA,  # Will be filled
+           nrow(cars_clean)),
+  Removed = c(0,
+              nrow(cars_original) - nrow(cars_original[cars_original$mileage <= 700000, ]),
+              nrow(cars_original[cars_original$mileage <= 700000, ]) - 
+                nrow(unique(cars_original[cars_original$mileage <= 700000, ])),
+              NA,  # Will be filled
+              NA,  # Will be filled
+              nrow(cars_original) - nrow(cars_clean))
+)
+
+print(cleaning_summary)
+
+cat("\n")
+cat("Total observations removed:", nrow(cars_original) - nrow(cars_clean), "\n")
+cat("Percentage of data retained:", 
+    round(nrow(cars_clean) / nrow(cars_original) * 100, 2), "%\n\n")
+
+cat("Breakdown of removed data:\n")
+cat("  • Extreme mileage (>700k):", 
+    nrow(cars_original) - nrow(cars_original[cars_original$mileage <= 700000, ]), "\n")
+cat("  • Duplicates:", 
+    nrow(cars_original[cars_original$mileage <= 700000, ]) - 
+      nrow(unique(cars_original[cars_original$mileage <= 700000, ])), "\n")
+cat("  • Unknown fuel/gear: ~206\n")
+cat("  • Missing HP: ~28\n")
+```
+
+
+
+# 9. Save Cleaned Dataset
+
+```{r save-cleaned}
+write.csv(cars_clean, "data/cars_cleaned.csv", row.names = FALSE)
+
+cat("========== DATASET SAVED ==========\n")
+cat("✓ Cleaned dataset saved to: data/cars_cleaned.csv\n")
+cat("✓ Rows:", nrow(cars_clean), "\n")
+cat("✓ Columns:", ncol(cars_clean), "\n")
+cat("✓ Ready for exploratory data analysis!\n")
+```
+
+# 10. Cleaned Dataset Summary Statistics
+
+```{r summary-stats}
+cat("========== SUMMARY STATISTICS ==========\n\n")
+summary(cars_clean)
+```
+
+---
+
+**Data Cleaning Complete!**
+
+Next steps:
+1. Exploratory Data Analysis (EDA)
+2. Feature Engineering
+3. Correlation Analysis
+4. Linear Regression Modeling
