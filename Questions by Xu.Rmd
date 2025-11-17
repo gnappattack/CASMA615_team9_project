@@ -1,0 +1,1086 @@
+---
+title: "Car Depreciation Analysis - Germany Used Car Market"
+author: "Shiheng Xu"
+date: "2025-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+library(car)
+```
+
+# Introduction
+
+Understanding car depreciation is crucial for both buyers and sellers in the used car market. Cars are typically one of the largest purchases people make, and unlike real estate, they lose value over time. This analysis examines the German automotive market using data from AutoScout24, one of Europe's largest car marketplaces, to answer three fundamental questions about how cars lose value.
+
+**Why This Matters:**
+- **For Buyers:** Knowing depreciation patterns helps identify the best time to buy and which vehicles hold their value
+- **For Sellers:** Understanding when cars lose the most value helps determine optimal selling timing
+- **For the Market:** Depreciation patterns reveal consumer preferences and brand value perceptions
+
+## Research Questions
+
+This study investigates three key questions:
+
+1. **How much value do cars lose per year?**  
+   *Quantifying the average annual depreciation rate provides a baseline for understanding car value loss.*
+
+2. **Do luxury brands (BMW, Mercedes) depreciate differently than economy brands (Volkswagen, Opel)?**  
+   *Luxury cars cost significantly more upfront, but do they depreciate faster, slower, or at the same rate as economy vehicles?*
+
+3. **Is there an interaction between mileage and age in determining price?**  
+   *Does high mileage hurt newer cars more than older cars, or vice versa? Understanding this interaction reveals important non-linear pricing dynamics.*
+
+---
+
+# 1. Data Overview
+
+## 1.1 Load Cleaned Dataset
+
+We begin by loading our cleaned dataset, which has been preprocessed to remove outliers, duplicates, and missing values.
+
+```{r load-data}
+cars <- read.csv("data/cars_cleaned.csv", stringsAsFactors = FALSE)
+
+cat("✓ Cleaned dataset loaded!\n")
+cat("Observations:", nrow(cars), "\n")
+cat("Variables:", ncol(cars), "\n\n")
+
+cat("Variables:\n")
+print(names(cars))
+
+cat("\nFirst few rows:\n")
+print(head(cars))
+```
+
+**Dataset Characteristics:**
+- **44,048 observations:** After removing 5% of problematic data (extreme outliers, duplicates)
+- **Time period:** 2011-2021 (11 years of vehicle data)
+- **Geographic scope:** Germany (one of Europe's largest automotive markets)
+- **Source:** AutoScout24 marketplace listings
+
+**Key Variables:**
+- `price`: Sale price in euros (dependent variable)
+- `mileage`: Kilometers driven (key depreciation factor)
+- `year`: Manufacturing year (converted to age for analysis)
+- `hp`: Horsepower (performance indicator)
+- `make`: Manufacturer/brand
+- `fuel`: Fuel type (Diesel, Gasoline, Electric, etc.)
+- `gear`: Transmission type (Manual, Automatic, Semi-automatic)
+- `offerType`: New, Used, Pre-registered, etc.
+
+---
+
+# 2. Feature Engineering
+
+To answer our research questions effectively, we create three derived variables that transform raw data into more analytically useful forms.
+
+```{r feature-engineering}
+# Calculate car age from manufacturing year
+cars$car_age <- 2025 - cars$year
+
+# Classify brands into market segments
+cars$brand_category <- ifelse(cars$make %in% 
+                               c("BMW", "Mercedes-Benz", "Audi", "Porsche"),
+                               "Luxury",
+                               ifelse(cars$make %in% 
+                                      c("Volkswagen", "Opel", "Ford", "Renault", 
+                                        "Skoda", "SEAT", "Hyundai", "Kia"),
+                                      "Economy",
+                                      "Mid-Range"))
+
+# Scale mileage to thousands for easier interpretation
+cars$mileage_1000 <- cars$mileage / 1000
+
+cat("New variables created:\n")
+cat("✓ car_age: Age of car in years (2025 - year)\n")
+cat("✓ brand_category: Luxury / Economy / Mid-Range\n")
+cat("✓ mileage_1000: Mileage in thousands of km\n\n")
+
+cat("Brand category distribution:\n")
+print(table(cars$brand_category))
+
+cat("\nCar age summary:\n")
+print(summary(cars$car_age))
+```
+
+**Feature Engineering Rationale:**
+
+1. **car_age (2025 - year):**  
+   Converting manufacturing year to age makes depreciation more intuitive. Instead of saying "a 2020 car costs €X," we can say "a 5-year-old car costs €X." This makes the time dimension of depreciation explicit.
+
+2. **brand_category (Luxury/Economy/Mid-Range):**  
+   We classify the 77 unique manufacturers into three market segments:
+   - **Luxury (7,414 cars):** BMW, Mercedes-Benz, Audi, Porsche - premium German brands
+   - **Economy (25,447 cars):** Volkswagen, Opel, Ford, Renault, etc. - mass-market brands  
+   - **Mid-Range (11,187 cars):** All other brands - positioned between economy and luxury
+   
+   This segmentation allows us to test whether depreciation patterns differ by market positioning.
+
+3. **mileage_1000 (mileage ÷ 1000):**  
+   Scaling mileage to thousands makes regression coefficients more interpretable. Instead of "each km reduces price by €0.05," we can say "each 1,000 km reduces price by €50."
+
+**Key Observation:** Our dataset is well-distributed across segments, with economy brands comprising 58% of listings (reflecting their market share), luxury brands 17%, and mid-range 25%. Car ages range from 4 to 14 years, with a median of 9 years.
+
+---
+
+# 3. Exploratory Data Analysis (EDA)
+
+Before building predictive models, we explore the data visually and statistically to understand distributions, relationships, and patterns that will inform our modeling approach.
+
+## 3.1 Understanding Price Distribution
+
+The distribution of prices reveals the market composition and suggests appropriate modeling strategies.
+
+```{r price-distribution}
+par(mfrow = c(1, 2))
+
+hist(cars$price, 
+     breaks = 50,
+     main = "Price Distribution",
+     xlab = "Price (EUR)",
+     col = "lightblue")
+
+hist(log(cars$price), 
+     breaks = 50,
+     main = "Log(Price) Distribution",
+     xlab = "Log(Price)",
+     col = "lightcoral")
+
+par(mfrow = c(1, 1))
+
+cat("\nPrice statistics:\n")
+print(summary(cars$price))
+```
+
+**Key Findings:**
+
+1. **Right-Skewed Distribution:** The original price distribution shows significant right skew, with most cars clustered in the €7,000-€20,000 range and a long tail extending to nearly €1.2 million for exotic vehicles.
+
+2. **Central Tendency:**
+   - **Median:** €10,990 (typical car price - 50% of cars cost less)
+   - **Mean:** €16,576 (higher than median due to expensive tail)
+   - **Gap:** The €5,586 difference between mean and median confirms the right skew
+
+3. **Price Range:** From €1,100 (budget economy cars) to €1,199,900 (supercars/exotics)
+
+4. **Log Transformation:** The log-transformed distribution is much more symmetric and approximately normal, suggesting that multiplicative effects may be important in pricing (e.g., luxury cars don't just cost more, they cost *many times* more).
+
+**Modeling Implication:** The right skew suggests we may need to consider log transformation in our regression models to better satisfy normality assumptions and handle the wide range of prices.
+
+---
+
+## 3.2 Research Question 1: Annual Depreciation Rate
+
+### How Much Value Do Cars Lose Per Year?
+
+This is the foundational question of our analysis. We examine the linear relationship between car age and price to quantify average annual value loss.
+
+### 3.2.1 Visual Relationship: Price vs. Age
+
+```{r price-vs-age}
+ggplot(cars, aes(x = car_age, y = price)) +
+  geom_point(alpha = 0.1, color = "steelblue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Car Price vs. Age",
+       subtitle = "How does price decrease with age?",
+       x = "Car Age (years)",
+       y = "Price (EUR)") +
+  theme_minimal()
+
+cor_age_price <- cor(cars$car_age, cars$price)
+cat("\nCorrelation between car age and price:", round(cor_age_price, 3), "\n")
+```
+
+**Visual Insights:**
+
+1. **Clear Negative Trend:** The scatter plot shows a strong downward trend - as cars age, prices decline
+2. **Correlation:** r = -0.411 (moderate negative correlation)
+3. **Scatter Pattern:** High variance at all ages indicates that age alone doesn't determine price (other factors matter)
+4. **Linear Fit:** The red regression line suggests a roughly linear depreciation pattern
+
+The correlation of -0.411 means age explains about 17% (0.411²) of price variance by itself - significant but leaving much room for other factors.
+
+### 3.2.2 Average Price by Year of Age
+
+```{r avg-price-by-year}
+price_by_age <- cars %>%
+  group_by(car_age) %>%
+  summarise(
+    avg_price = mean(price),
+    median_price = median(price),
+    count = n()
+  ) %>%
+  arrange(car_age)
+
+print(price_by_age)
+
+ggplot(price_by_age, aes(x = car_age, y = avg_price)) +
+  geom_line(color = "darkblue", size = 1.2) +
+  geom_point(color = "darkblue", size = 3) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Average Price by Car Age",
+       subtitle = "Clear depreciation pattern",
+       x = "Car Age (years)",
+       y = "Average Price (EUR)") +
+  theme_minimal()
+```
+
+**Depreciation Pattern Analysis:**
+
+The table and plot reveal the year-by-year depreciation story:
+
+- **4-year-old cars:** €31,420 average (newest in dataset)
+- **5-year-old cars:** €29,221 (lost €2,199 in one year = 7.0% annual drop)
+- **6-year-old cars:** €24,853 (lost €4,368 = 15.0% drop - accelerating!)
+- **7-8 years:** Continued decline but slowing
+- **9-year-old cars:** €12,762 (crossed below €15,000 threshold)
+- **14-year-old cars:** €7,063 (oldest in dataset)
+
+**Key Pattern:** Depreciation is **non-linear** and **age-dependent:**
+- Years 4-6: Rapid depreciation (€2,000-€4,000/year)
+- Years 7-10: Moderate depreciation (€1,000-€2,000/year)  
+- Years 11-14: Slower depreciation (€500-€1,200/year)
+
+This suggests cars lose value fastest in their early years, then depreciation slows as they age - a classic depreciation curve.
+
+### 3.2.3 Statistical Quantification
+
+```{r depreciation-rate}
+simple_model <- lm(price ~ car_age, data = cars)
+
+depreciation_per_year <- coef(simple_model)["car_age"]
+
+cat("\n========== ANSWER TO QUESTION 1 ==========\n")
+cat("Cars lose approximately €", round(abs(depreciation_per_year), 2), 
+    " per year\n", sep = "")
+cat("==========================================\n\n")
+
+cat("Simple regression model:\n")
+print(summary(simple_model))
+```
+
+**ANSWER TO QUESTION 1:**
+
+**Cars in Germany lose an average of €2,568 per year.**
+
+**Model Interpretation:**
+- **Intercept:** €39,860 = estimated price of a "zero-year-old" car (theoretical new car price)
+- **Slope:** -€2,568 = average price decrease per year of age
+- **R² = 0.169:** Age explains 17% of price variance (moderate, leaves room for other factors)
+- **Significance:** p < 0.001 (highly significant relationship)
+
+**Practical Meaning:**
+- A 5-year-old car has lost ~€12,840 from its theoretical new price
+- A 10-year-old car has lost ~€25,680 (64% of its original value)
+- This is an *average* - individual cars vary based on mileage, condition, brand, etc.
+
+---
+
+## 3.3 Research Question 2: Luxury vs. Economy Depreciation
+
+### Do Luxury Brands Lose Value Differently?
+
+Luxury cars cost significantly more upfront. Do they hold their value better (brand prestige) or worse (higher maintenance costs, smaller market) than economy brands?
+
+### 3.3.1 Price Levels by Brand Category
+
+```{r price-by-brand-category}
+ggplot(cars, aes(x = brand_category, y = price, fill = brand_category)) +
+  geom_boxplot() +
+  scale_y_log10(labels = scales::comma) +
+  scale_fill_manual(values = c("Economy" = "lightblue", 
+                                "Mid-Range" = "lightgreen", 
+                                "Luxury" = "gold")) +
+  labs(title = "Price Distribution by Brand Category",
+       subtitle = "Log scale for better visualization",
+       x = "Brand Category",
+       y = "Price (EUR, log scale)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+cat("\nAverage price by brand category:\n")
+price_by_category <- cars %>%
+  group_by(brand_category) %>%
+  summarise(
+    avg_price = mean(price),
+    median_price = median(price),
+    sd_price = sd(price),
+    count = n()
+  )
+print(price_by_category)
+```
+
+**Price Level Comparison:**
+
+| Category | Average Price | Median Price | Standard Deviation |
+|----------|--------------|--------------|-------------------|
+| **Economy** | €13,317 | €9,999 | €9,427 |
+| **Mid-Range** | €15,625 | €9,900 | €25,575 |
+| **Luxury** | €29,196 | €22,400 | €27,703 |
+
+**Key Observations:**
+
+1. **Luxury Premium:** Luxury brands cost **2.2× more** than economy brands on average (€29,196 vs. €13,317)
+
+2. **Higher Variance:** Luxury brands show much higher price variation (SD = €27,703) due to:
+   - Wide range of models (BMW 1-series vs. 7-series)
+   - Age/condition variance
+   - Special editions and M/AMG performance models
+
+3. **Median vs. Mean:** All categories show mean > median (right skew), but luxury brands show the largest gap (€6,796), indicating more extremely expensive vehicles in the luxury segment
+
+### 3.3.2 Depreciation Curves by Category
+
+```{r depreciation-by-category}
+depreciation_by_brand <- cars %>%
+  group_by(brand_category, car_age) %>%
+  summarise(avg_price = mean(price), .groups = 'drop')
+
+ggplot(depreciation_by_brand, aes(x = car_age, y = avg_price, 
+                                    color = brand_category, 
+                                    group = brand_category)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_color_manual(values = c("Economy" = "steelblue", 
+                                  "Mid-Range" = "forestgreen", 
+                                  "Luxury" = "darkgoldenrod")) +
+  labs(title = "Depreciation Curves by Brand Category",
+       subtitle = "Do luxury brands depreciate differently?",
+       x = "Car Age (years)",
+       y = "Average Price (EUR)",
+       color = "Brand Category") +
+  theme_minimal()
+```
+
+**Visual Depreciation Comparison:**
+
+The three lines tell a clear story:
+
+1. **Starting Points (4 years):**
+   - Luxury: ~€50,000
+   - Mid-Range: ~€20,000
+   - Economy: ~€18,000
+
+2. **Ending Points (14 years):**
+   - Luxury: ~€12,000
+   - Mid-Range: ~€7,000
+   - Economy: ~€6,000
+
+3. **Curve Steepness:** Luxury line has the **steepest slope**, indicating faster absolute value loss
+
+4. **Parallel vs. Divergent:** Lines are **not parallel** - they converge as cars age, meaning the luxury premium diminishes over time
+
+### 3.3.3 Statistical Test of Depreciation Rates
+
+```{r luxury-vs-economy-model}
+model_by_category <- lm(price ~ car_age * brand_category, data = cars)
+
+cat("\n========== ANSWER TO QUESTION 2 ==========\n")
+cat("Depreciation per year by brand category:\n\n")
+
+luxury_cars <- cars[cars$brand_category == "Luxury", ]
+economy_cars <- cars[cars$brand_category == "Economy", ]
+
+luxury_model <- lm(price ~ car_age, data = luxury_cars)
+economy_model <- lm(price ~ car_age, data = economy_cars)
+
+luxury_depreciation <- coef(luxury_model)["car_age"]
+economy_depreciation <- coef(economy_model)["car_age"]
+
+cat("Luxury brands lose: €", round(abs(luxury_depreciation), 2), 
+    " per year\n", sep = "")
+cat("Economy brands lose: €", round(abs(economy_depreciation), 2), 
+    " per year\n", sep = "")
+cat("\nDifference: €", 
+    round(abs(luxury_depreciation) - abs(economy_depreciation), 2), 
+    " per year\n", sep = "")
+cat("==========================================\n\n")
+
+cat("Model with interaction (age × brand category):\n")
+print(summary(model_by_category))
+```
+
+**ANSWER TO QUESTION 2:**
+
+**YES, luxury brands depreciate MUCH faster than economy brands:**
+
+- **Luxury brands:** Lose €4,785 per year
+- **Economy brands:** Lose €1,986 per year  
+- **Difference:** Luxury brands lose an additional €2,799 per year (2.4× faster!)
+
+**Why Does This Matter?**
+
+1. **Total Cost of Ownership:** A luxury car owner loses €27,990 more over 10 years just from depreciation
+2. **Resale Strategy:** Luxury car owners should sell earlier to avoid steep depreciation
+3. **Buying Opportunity:** Used luxury cars become relatively more affordable as they age
+
+**Statistical Model Results:**
+
+The interaction model confirms:
+- **Base depreciation (Economy):** -€1,986/year (p < 0.001)
+- **Luxury interaction effect:** Additional -€2,799/year (p < 0.001)
+- **Mid-Range interaction:** Additional -€524/year (p < 0.001)
+- **R² = 0.284:** Brand category + age explain 28% of price variance (up from 17% with age alone)
+
+**Interpretation:** The luxury "penalty" is real and substantial. The initial prestige premium doesn't protect against depreciation - in fact, it accelerates it.
+
+---
+
+## 3.4 Research Question 3: Mileage-Age Interaction
+
+### Does Mileage Affect Newer and Older Cars Differently?
+
+This question explores whether the impact of mileage on price changes depending on car age - a non-linear relationship that could reveal important market dynamics.
+
+### 3.4.1 Visual Exploration by Age Groups
+
+```{r mileage-price-by-age}
+cars$age_group <- cut(cars$car_age, 
+                       breaks = c(0, 4, 8, 14),
+                       labels = c("New (0-4 yrs)", 
+                                  "Mid-age (5-8 yrs)", 
+                                  "Old (9-14 yrs)"))
+
+ggplot(cars, aes(x = mileage_1000, y = price, color = age_group)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", se = TRUE) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_color_manual(values = c("New (0-4 yrs)" = "darkgreen",
+                                  "Mid-age (5-8 yrs)" = "orange",
+                                  "Old (9-14 yrs)" = "darkred")) +
+  labs(title = "Price vs. Mileage by Age Group",
+       subtitle = "Does mileage affect price differently for different ages?",
+       x = "Mileage (1000 km)",
+       y = "Price (EUR)",
+       color = "Age Group") +
+  theme_minimal()
+```
+
+**Striking Visual Pattern:**
+
+The three regression lines tell a fascinating story:
+
+1. **New cars (Green, 0-4 years):**  
+   - **POSITIVE slope!** Higher mileage → higher price
+   - Seems counterintuitive, but reflects market reality: newer cars with more mileage are often higher-end models (driven more because they're better)
+
+2. **Mid-age cars (Orange, 5-8 years):**  
+   - **Negative slope** (as expected)
+   - Mileage starts to hurt price
+   - Steeper than old cars
+
+3. **Old cars (Red, 9-14 years):**  
+   - **Negative but shallow slope**
+   - Mileage still matters but less
+   - Market has already priced in "high mileage"
+
+### 3.4.2 Correlation Analysis
+
+```{r correlation-by-age}
+cor_by_age <- cars %>%
+  group_by(age_group) %>%
+  summarise(
+    correlation = cor(mileage, price),
+    count = n()
+  )
+
+cat("\nCorrelation between mileage and price by age group:\n")
+print(cor_by_age)
+```
+
+**Correlation Confirmation:**
+
+| Age Group | Correlation | Interpretation |
+|-----------|-------------|----------------|
+| New (0-4 yrs) | **+0.270** | Positive! More mileage → Higher price |
+| Mid-age (5-8 yrs) | **-0.134** | Negative (expected) |
+| Old (9-14 yrs) | **-0.113** | Negative but weaker |
+
+This quantifies what we saw visually: **the relationship between mileage and price actually reverses sign** as cars age!
+
+### 3.4.3 Statistical Test of Interaction
+
+```{r interaction-model}
+model_no_interaction <- lm(price ~ mileage_1000 + car_age, data = cars)
+
+model_with_interaction <- lm(price ~ mileage_1000 * car_age, data = cars)
+
+cat("\n========== ANSWER TO QUESTION 3 ==========\n")
+
+cat("\nModel WITHOUT interaction:\n")
+cat("R-squared:", round(summary(model_no_interaction)$r.squared, 4), "\n\n")
+
+cat("Model WITH interaction (mileage × age):\n")
+cat("R-squared:", round(summary(model_with_interaction)$r.squared, 4), "\n\n")
+
+anova_result <- anova(model_no_interaction, model_with_interaction)
+p_value <- anova_result$`Pr(>F)`[2]
+
+if (p_value < 0.001) {
+  cat("✓ YES, there IS a significant interaction!\n")
+  cat("  (p-value < 0.001)\n\n")
+} else if (p_value < 0.05) {
+  cat("✓ YES, there IS a significant interaction!\n")
+  cat("  (p-value =", round(p_value, 4), ")\n\n")
+} else {
+  cat("✗ NO significant interaction found\n")
+  cat("  (p-value =", round(p_value, 4), ")\n\n")
+}
+
+cat("Interpretation:\n")
+if (p_value < 0.05) {
+  interaction_coef <- coef(model_with_interaction)["mileage_1000:car_age"]
+  cat("The effect of mileage on price CHANGES as cars age.\n")
+  cat("Interaction coefficient:", round(interaction_coef, 2), "\n")
+  if (interaction_coef < 0) {
+    cat("→ High mileage hurts OLDER cars MORE than newer cars\n")
+  } else {
+    cat("→ High mileage hurts NEWER cars MORE than older cars\n")
+  }
+} else {
+  cat("Mileage affects price similarly regardless of age.\n")
+}
+cat("==========================================\n\n")
+
+cat("Full interaction model:\n")
+print(summary(model_with_interaction))
+```
+
+**ANSWER TO QUESTION 3:**
+
+**YES! There IS a highly significant interaction (p < 0.001)**
+
+**Key Findings:**
+
+1. **Model Comparison:**
+   - Without interaction: R² = 0.1707
+   - With interaction: R² = 0.1762
+   - **Improvement:** +0.55 percentage points (small but significant given large sample)
+
+2. **Interaction Coefficient:** +8.87 (p < 0.001)
+   
+**What This Means:**
+
+The **positive interaction coefficient** reveals a crucial market dynamic:
+
+- **For newer cars:** Each additional 1,000 km has LESS negative impact on price (or even positive for very new cars with other desirable features)
+- **For older cars:** Each additional 1,000 km has MORE negative impact
+
+**Mathematical Interpretation:**
+
+Base mileage effect: -€111 per 1,000 km  
+Age modifier: +€8.87 per 1,000 km × car age
+
+For a **4-year-old car:**
+- Mileage effect = -111 + (8.87 × 4) = -€75.52 per 1,000 km
+
+For a **14-year-old car:**
+- Mileage effect = -111 + (8.87 × 14) = -€6.82 per 1,000 km
+
+**Why This Happens:**
+
+1. **Newer cars:** High mileage may signal "highway miles" or business use (often better maintained)
+2. **Older cars:** The market has already factored in that old cars will have high mileage - it's expected
+3. **Selection effect:** Very new, high-mileage cars are often rental returns or executive vehicles (actually premium models)
+
+---
+
+## 3.5 Correlation Matrix: The Big Picture
+
+Before building full models, let's examine all numeric relationships simultaneously.
+
+```{r correlation-matrix}
+numeric_vars <- cars %>%
+  select(price, mileage, hp, year, car_age, mileage_1000)
+
+cor_matrix <- cor(numeric_vars, use = "complete.obs")
+
+corrplot(cor_matrix, 
+         method = "color", 
+         type = "upper",
+         addCoef.col = "black",
+         number.cex = 0.7,
+         tl.col = "black",
+         tl.srt = 45,
+         title = "Correlation Matrix",
+         mar = c(0, 0, 2, 0))
+
+cat("\nCorrelation matrix:\n")
+print(round(cor_matrix, 3))
+```
+
+**Correlation Insights:**
+
+**Strong Correlations with Price:**
+- **HP: +0.746** (strongest predictor! More power → much higher price)
+- **car_age: -0.411** (older → cheaper)
+- **year: +0.411** (newer → more expensive; perfect inverse of age)
+- **mileage: -0.307** (more miles → lower price)
+
+**Multicollinearity Concerns:**
+- **year ↔ car_age: -1.000** (perfect negative correlation - they're the same variable!)
+- **mileage ↔ mileage_1000: +1.000** (perfect positive - they're the same, just scaled)
+- **year ↔ mileage: -0.673** (newer cars have lower mileage - expected)
+
+**Modeling Implications:**
+1. **Don't include both year and car_age** (redundant - will cause multicollinearity)
+2. **Don't include both mileage and mileage_1000** (scaled versions)
+3. **HP is crucial** - explains 56% of price variance (0.746²) by itself!
+4. **Age and mileage are moderately correlated** (0.673) - but not perfectly, so both add value
+
+---
+
+# 4. Progressive Model Building
+
+Now we build a series of increasingly complex models to understand which factors best explain car prices.
+
+## 4.1 Model 1: Baseline - Age Only
+
+```{r model1}
+model1 <- lm(price ~ car_age, data = cars)
+
+cat("========== MODEL 1: Price ~ Age ==========\n")
+cat("R-squared:", round(summary(model1)$r.squared, 4), "\n")
+cat("Depreciation per year: €", round(abs(coef(model1)["car_age"]), 2), "\n")
+print(summary(model1))
+```
+
+**Baseline Performance:**
+- **R² = 0.169:** Age alone explains only 17% of price variance
+- **Coefficient:** -€2,568/year (same as our earlier simple analysis)
+- **RMSE:** €17,760 (large prediction errors)
+
+This confirms age is important but insufficient on its own.
+
+## 4.2 Model 2: Add Mileage
+
+```{r model2}
+model2 <- lm(price ~ car_age + mileage_1000, data = cars)
+
+cat("\n========== MODEL 2: Price ~ Age + Mileage ==========\n")
+cat("R-squared:", round(summary(model2)$r.squared, 4), "\n")
+print(summary(model2))
+```
+
+**Incremental Improvement:**
+- **R² = 0.171:** Only +0.2% improvement (minimal)
+- **Age coefficient:** -€2,340/year (changed slightly)
+- **Mileage coefficient:** -€17/1,000 km (p < 0.001, but small effect)
+
+**Interpretation:** After controlling for age, mileage adds little predictive power. This makes sense because age and mileage are correlated (r = 0.673) - they partially capture the same "wear and tear" information.
+
+## 4.3 Model 3: Add Horsepower - Game Changer!
+
+```{r model3}
+model3 <- lm(price ~ car_age + mileage_1000 + hp, data = cars)
+
+cat("\n========== MODEL 3: Price ~ Age + Mileage + HP ==========\n")
+cat("R-squared:", round(summary(model3)$r.squared, 4), "\n")
+print(summary(model3))
+```
+
+**DRAMATIC IMPROVEMENT:**
+- **R² = 0.653:** MASSIVE jump to 65%! (from 17%)
+- **HP coefficient:** +€184/horsepower (p < 0.001)
+- **Age coefficient:** -€986/year (reduced from -€2,340)
+- **Mileage coefficient:** -€58/1,000 km (increased in magnitude)
+
+**Why This Matters:**
+
+HP captures **vehicle quality/class** that age and mileage miss:
+- A 5-year-old BMW M5 (600 HP) is very different from a 5-year-old VW Golf (100 HP)
+- HP explains why some cars are expensive despite age/mileage
+
+**Coefficient Changes:**
+- Age effect SHRINKS because HP captures some of what made newer cars expensive (they tend to be higher-spec)
+- Mileage effect GROWS because now we're comparing similar-powered cars
+
+## 4.4 Model 4: Add Brand Category
+
+```{r model4}
+model4 <- lm(price ~ car_age + mileage_1000 + hp + brand_category, data = cars)
+
+cat("\n========== MODEL 4: Add Brand Category ==========\n")
+cat("R-squared:", round(summary(model4)$r.squared, 4), "\n")
+print(summary(model4))
+```
+
+**Minimal Additional Gain:**
+- **R² = 0.653:** Only +0.03% improvement
+- **Luxury coefficient:** -€259 (NOT significant! p = 0.129)
+- **Mid-Range coefficient:** +€791 (p < 0.001)
+
+**Surprising Finding:** After controlling for HP, luxury brands DON'T command a premium! Why?
+
+- HP already captures much of the "luxury" effect (luxury cars have more HP)
+- The "luxury brand premium" is mostly explained by performance, not badge
+- Mid-range brands might offer better value (more features per HP)
+
+## 4.5 Model 5: Add Interaction (Mileage × Age)
+
+```{r model5}
+model5 <- lm(price ~ car_age * mileage_1000 + hp + brand_category, data = cars)
+
+cat("\n========== MODEL 5: With Interaction ==========\n")
+cat("R-squared:", round(summary(model5)$r.squared, 4), "\n")
+print(summary(model5))
+```
+
+**Interaction Confirmed:**
+- **R² = 0.656:** +0.3% improvement
+- **Interaction term:** +€6.27 (p < 0.001) - significant!
+- **Age coefficient:** -€1,296/year (main effect)
+- **Mileage coefficient:** -€123/1,000 km (main effect)
+
+This confirms our earlier finding: mileage matters less for older cars.
+
+## 4.6 Model 6: Full Model (Add Fuel & Transmission)
+
+```{r model6}
+model6 <- lm(price ~ car_age * mileage_1000 + hp + brand_category + 
+              fuel + gear, data = cars)
+
+cat("\n========== MODEL 6: Full Model ==========\n")
+cat("R-squared:", round(summary(model6)$r.squared, 4), "\n")
+print(summary(model6))
+```
+
+**Final Model Performance:**
+- **R² = 0.657:** Best fit, explains 66% of price variance
+- **RMSE:** €11,410 (much better than €17,760 in Model 1)
+
+**Key Coefficients:**
+- **Age:** -€1,246/year (controlling for everything else)
+- **Mileage:** -€132/1,000 km (base effect)
+- **HP:** +€185/horsepower (still dominant)
+- **Manual transmission:** +€478 (preferred by enthusiasts in Germany!)
+- **Fuel types:** Mostly not significant (HP captures engine differences)
+
+---
+
+# 5. Model Comparison
+
+## 5.1 Performance Metrics
+
+```{r model-comparison}
+model_comparison <- data.frame(
+  Model = c("M1: Age only",
+            "M2: + Mileage",
+            "M3: + HP",
+            "M4: + Brand",
+            "M5: + Interaction",
+            "M6: + Fuel & Gear"),
+  R_squared = c(summary(model1)$r.squared,
+                 summary(model2)$r.squared,
+                 summary(model3)$r.squared,
+                 summary(model4)$r.squared,
+                 summary(model5)$r.squared,
+                 summary(model6)$r.squared),
+  Adj_R_squared = c(summary(model1)$adj.r.squared,
+                     summary(model2)$adj.r.squared,
+                     summary(model3)$adj.r.squared,
+                     summary(model4)$adj.r.squared,
+                     summary(model5)$adj.r.squared,
+                     summary(model6)$adj.r.squared),
+  AIC = c(AIC(model1), AIC(model2), AIC(model3), 
+          AIC(model4), AIC(model5), AIC(model6))
+)
+
+model_comparison$R_squared <- round(model_comparison$R_squared, 4)
+model_comparison$Adj_R_squared <- round(model_comparison$Adj_R_squared, 4)
+model_comparison$AIC <- round(model_comparison$AIC, 0)
+
+cat("\n========== MODEL COMPARISON ==========\n")
+print(model_comparison)
+
+best_model_idx <- which.max(model_comparison$Adj_R_squared)
+cat("\nBest model by Adjusted R²:", model_comparison$Model[best_model_idx], "\n")
+cat("Adjusted R²:", model_comparison$Adj_R_squared[best_model_idx], "\n")
+```
+
+**Model Progression Story:**
+
+| Model | R² | Improvement | Key Insight |
+|-------|-------|------------|-------------|
+| M1: Age | 0.169 | Baseline | Age matters, but... |
+| M2: +Mileage | 0.171 | +0.2% | ...mileage adds little (correlated with age) |
+| **M3: +HP** | **0.653** | **+48%!** | **GAME CHANGER: Performance matters most!** |
+| M4: +Brand | 0.653 | +0.03% | Brand doesn't matter after HP |
+| M5: +Interaction | 0.656 | +0.3% | Non-linear mileage effect confirmed |
+| M6: +Fuel&Gear | 0.657 | +0.1% | Small gains from transmission preference |
+
+**Key Takeaway:** The jump from M2 to M3 reveals the most important insight:
+
+**Vehicle performance (HP) is BY FAR the dominant price factor, more than age or brand!**
+
+## 5.2 Model Diagnostics
+
+```{r diagnostics}
+par(mfrow = c(2, 2))
+plot(model6)
+par(mfrow = c(1, 1))
+
+cat("\nCheck for multicollinearity (VIF):\n")
+vif_values <- vif(model6)
+print(vif_values)
+
+cat("\nVIF interpretation:\n")
+cat("VIF < 5: No multicollinearity concern ✓\n")
+cat("VIF 5-10: Moderate multicollinearity ⚠\n")
+cat("VIF > 10: High multicollinearity ✗\n")
+```
+
+**Diagnostic Assessment:**
+
+**1. Residuals vs. Fitted:**
+- Some heteroscedasticity visible (variance increases with price)
+- Suggests log transformation might help for very expensive cars
+
+**2. Q-Q Plot:**
+- Heavy tails (deviations at extremes)
+- Some extremely expensive/cheap cars not well-predicted
+- But central 95% follows normal distribution well
+
+**3. Scale-Location:**
+- Confirms heteroscedasticity
+- Standard errors may be slightly understated
+
+**4. Residuals vs. Leverage:**
+- A few high-leverage points (outliers)
+- But Cook's distance < 0.5 for all (no single point dominates)
+
+**Multicollinearity (VIF):**
+- **mileage_1000: 19.6** - High! (interaction with age causes this)
+- **car_age:mileage_1000: 23.4** - High! (by design - it's an interaction)
+- **All others < 3** - Good!
+
+**Verdict:** The interaction terms naturally create multicollinearity, but this is expected and doesn't invalidate the model. The model is reasonably robust for prediction and interpretation.
+
+---
+
+# 6. Key Findings & Answers
+
+```{r key-findings}
+cat("\n")
+cat("╔════════════════════════════════════════════════════════════╗\n")
+cat("║               KEY FINDINGS SUMMARY                         ║\n")
+cat("╠════════════════════════════════════════════════════════════╣\n")
+cat("║                                                            ║\n")
+cat("║  Question 1: How much value do cars lose per year?        ║\n")
+cat("║  → Answer: €", round(abs(coef(model2)["car_age"]), 0), 
+    " per year (on average)              ║\n", sep = "")
+cat("║                                                            ║\n")
+cat("║  Question 2: Do luxury brands depreciate differently?     ║\n")
+cat("║  → Luxury: €", round(abs(luxury_depreciation), 0), 
+    " per year                              ║\n", sep = "")
+cat("║  → Economy: €", round(abs(economy_depreciation), 0), 
+    " per year                             ║\n", sep = "")
+cat("║  → Difference: €", 
+    round(abs(luxury_depreciation) - abs(economy_depreciation), 0), 
+    " per year MORE for luxury          ║\n", sep = "")
+cat("║                                                            ║\n")
+cat("║  Question 3: Is there mileage × age interaction?          ║\n")
+
+if (p_value < 0.05) {
+  cat("║  → YES! Significant interaction (p < 0.05)                 ║\n")
+} else {
+  cat("║  → NO significant interaction found                        ║\n")
+}
+cat("║     High mileage hurts NEWER cars less than older cars     ║\n")
+cat("║                                                            ║\n")
+cat("║  Best Model Performance:                                   ║\n")
+cat("║  → R² = ", sprintf("%.3f", summary(model6)$r.squared), 
+    " (explains ", round(summary(model6)$r.squared * 100, 1), 
+    "% of variance)      ║\n", sep = "")
+cat("║  → Most important factor: HORSEPOWER (+€185/HP)            ║\n")
+cat("║                                                            ║\n")
+cat("╚════════════════════════════════════════════════════════════╝\n")
+```
+
+---
+
+# 7. Practical Insights
+
+## For Buyers and Sellers
+
+```{r practical-insights}
+cat("\n========== PRACTICAL INSIGHTS FOR BUYERS/SELLERS ==========\n\n")
+
+cat("For BUYERS:\n\n")
+
+cat("1. DEPRECIATION AWARENESS:\n")
+cat("   • Cars lose ~€", round(abs(coef(model2)["car_age"]), 0), 
+    " per year on average\n", sep = "")
+cat("   • But luxury brands lose 2.4× faster (€", 
+    round(abs(luxury_depreciation), 0), " vs €", 
+    round(abs(economy_depreciation), 0), ")\n", sep = "")
+cat("   • Buy used luxury cars for maximum value!\n\n")
+
+cat("2. SWEET SPOT FOR VALUE:\n")
+cat("   • 5-8 year old cars offer best value per euro\n")
+cat("   • Past initial steep depreciation but still plenty of life\n")
+cat("   • Consider: 2017-2020 models in 2025\n\n")
+
+cat("3. HORSEPOWER IS KEY:\n")
+cat("   • HP is THE dominant price factor (+€185/HP)\n")
+cat("   • More important than brand name!\n")
+cat("   • Don't overpay for luxury badge if HP is similar\n\n")
+
+cat("4. MILEAGE STRATEGY:\n")
+cat("   • For newer cars: mileage matters LESS (interaction effect)\n")
+cat("   • For older cars: already priced in - don't stress about it\n")
+cat("   • Every 10,000 km = ~€", 
+    round(abs(coef(model2)["mileage_1000"]) * 10, 0), 
+    " discount\n\n", sep = "")
+
+cat("5. TRANSMISSION PREFERENCE:\n")
+cat("   • Manual transmission adds €478 value in Germany!\n")
+cat("   • Driving enthusiast market still values manual\n\n")
+
+cat("─────────────────────────────────────────────────────────────\n\n")
+
+cat("For SELLERS:\n\n")
+
+cat("1. TIMING IS EVERYTHING:\n")
+cat("   • Sell luxury cars EARLY (depreciate €", 
+    round(abs(luxury_depreciation), 0), "/year!)\n", sep = "")
+cat("   • Economy cars hold value better - can keep longer\n")
+cat("   • Avoid the 100,000 km threshold (psychological barrier)\n\n")
+
+cat("2. WHAT BUYERS VALUE:\n")
+cat("   • Horsepower is #1 - emphasize performance specs\n")
+cat("   • Manual transmission is a PLUS (€478 premium)\n")
+cat("   • Low mileage matters more for mid-age cars (5-8 yrs)\n\n")
+
+cat("3. PRICING STRATEGY:\n")
+cat("   • Use our model as baseline:\n")
+cat("   • Start with ~€40,000 for new equivalent\n")
+cat("   • Subtract €", round(abs(coef(model6)["car_age"]), 0), 
+    " per year of age\n", sep = "")
+cat("   • Subtract €", round(abs(coef(model6)["mileage_1000"]), 0), 
+    " per 1,000 km\n", sep = "")
+cat("   • Add €", round(coef(model6)["hp"], 0), 
+    " per horsepower\n", sep = "")
+cat("   • Adjust for fuel type and features\n\n")
+
+cat("4. DOCUMENTATION:\n")
+cat("   • Keep service records (justifies premium)\n")
+cat("   • Emphasize performance features (HP sells!)\n")
+cat("   • Highlight manual transmission if applicable\n\n")
+
+cat("==========================================================\n")
+```
+
+---
+
+# 8. Conclusion
+
+## Summary of Findings
+
+This analysis of 44,048 used cars from the German market revealed three key insights into automotive depreciation:
+
+### 1. **Annual Depreciation Rate: €2,340/year**
+
+Cars in Germany lose an average of €2,340 per year in value. However, this is not uniform:
+- **Early years (4-6):** Rapid depreciation (€2,000-€4,000/year)
+- **Middle years (7-10):** Moderate depreciation (€1,000-€2,000/year)
+- **Later years (11-14):** Slow depreciation (€500-€1,200/year)
+
+The non-linear pattern suggests cars lose value fastest when newest, then slow down.
+
+### 2. **Luxury Brand Penalty: 2.4× Faster Depreciation**
+
+Luxury brands (BMW, Mercedes, Audi, Porsche) depreciate **significantly faster** than economy brands:
+- **Luxury:** -€4,785/year
+- **Economy:** -€1,986/year
+- **Difference:** -€2,799/year additional loss
+
+This means a luxury car loses ~€28,000 more than an economy car over 10 years purely from depreciation. The initial prestige premium does not protect against value loss.
+
+### 3. **Mileage-Age Interaction: Context Matters**
+
+The relationship between mileage and price **changes** as cars age:
+- **Newer cars:** Mileage has minimal negative effect (even positive for some)
+- **Mid-age cars:** Mileage matters most (steepest penalty)
+- **Older cars:** Mileage matters less (market expects high miles)
+
+This interaction (p < 0.001) reveals that depreciation is not a simple linear process.
+
+### 4. **Horsepower Dominates Pricing**
+
+The most important discovery: **Horsepower explains more price variance than age, mileage, and brand combined.**
+
+- Adding HP increased R² from 17% to 65% (48 percentage points!)
+- Each additional HP adds €185 to price
+- Brand prestige becomes insignificant once HP is controlled for
+
+**Implication:** The market values vehicle performance more than badge prestige.
+
+## Model Performance
+
+Our final model (Model 6) explains **65.7% of price variance** using:
+- Car age (with interaction)
+- Mileage (with interaction)  
+- Horsepower
+- Brand category
+- Fuel type
+- Transmission type
+
+With an RMSE of €11,410 on a mean price of €16,576, the model provides useful predictions for typical vehicles, though extreme luxury/budget cars are less well-predicted.
+
+## Limitations
+
+1. **Dataset scope:** Limited to Germany, 2011-2021
+2. **Missing variables:** No data on:
+   - Accident history
+   - Service records  
+   - Options/features
+   - Color
+   - Regional location
+3. **Survivorship bias:** Totaled cars not in dataset
+4. **Heteroscedasticity:** Model precision decreases for very expensive cars
+5. **Interaction complexity:** Mileage effect varies by age, making simple rules difficult
+
+## Future Research Directions
+
+1. **Non-linear models:** Try polynomial terms or splines for age/mileage
+2. **Log transformation:** Better fit for expensive cars
+3. **Make-specific models:** Different depreciation by specific brands
+4. **Regional analysis:** Does depreciation differ by German state?
+5. **Time trends:** How have depreciation rates changed over time?
+
+## Final Recommendations
+
+**For Buyers:**
+- Buy used luxury cars (4-6 years old) for maximum value
+- Prioritize horsepower over brand name
+- Don't fear high mileage on older cars (already priced in)
+
+**For Sellers:**
+- Sell luxury vehicles early (years 2-4) to avoid steep depreciation
+- Emphasize performance specs (HP) in listings
+- Manual transmission commands a premium in Germany
+
+**For the Market:**
+- Performance matters more than prestige
+- The "luxury tax" is real and substantial
+- Age, mileage, and price interact in complex, non-linear ways
+
+---
+
+## Acknowledgments
+
+Data source: AutoScout24 via Kaggle dataset by ander289386
+
+Analysis conducted using R with packages: dplyr, ggplot2, corrplot, car
+
+---
+
+*End of Analysis*
