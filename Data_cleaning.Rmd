@@ -2,7 +2,7 @@
 title: "Data Cleaning - Germany Cars Dataset"
 author: "Shiheng Xu"
 date: "2025-11-10"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
